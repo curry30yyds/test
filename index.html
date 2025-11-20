@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Designed by ShunluZhu </title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* 基础设置 */
+        body { background-color: #0f172a; color: white; font-family: sans-serif; overflow: hidden; }
+        
+        /* 视频镜像与样式 */
+        video { 
+            transform: scaleX(-1); 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+            border-radius: 12px;
+        }
+        
+        /* 动态网格布局 */
+        .video-grid {
+            display: grid;
+            gap: 1rem;
+            width: 100%;
+            height: 100%;
+            padding: 1rem;
+            box-sizing: border-box;
+            /* 默认是一个自适应的网格 */
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-auto-rows: 1fr; 
+        }
+
+        /* 根据人数微调网格 (JS动态添加类名) */
+        .grid-1 { grid-template-columns: 1fr; }
+        .grid-2 { grid-template-columns: 1fr 1fr; } 
+        /* 更多人用 auto-fit 处理 */
+
+        /* 视频容器卡片 */
+        .video-card {
+            position: relative;
+            background: #1e293b;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .video-card:hover { border-color: #3b82f6; transform: scale(1.01); }
+
+        /* 标签 */
+        .user-tag {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.6);
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            backdrop-filter: blur(4px);
+        }
+
+        /* 放大模式 (Focus Mode) */
+        .video-card.focused {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 50;
+            border-radius: 0;
+            margin: 0;
+            width: 100vw !important;
+            height: 100vh !important;
+        }
+
+        /* 科技感背景 */
+        .tech-bg {
+            background-image: radial-gradient(circle at 50% 50%, #1e293b 0%, #0f172a 100%);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. 入口界面 (Landing Page) -->
+    <div id="landing-page" class="fixed inset-0 z-50 flex items-center justify-center tech-bg">
+        <div class="bg-slate-800/50 backdrop-blur-xl p-8 rounded-2xl border border-slate-700 shadow-2xl w-full max-w-md text-center">
+            <div class="flex justify-center mb-6">
+                <div class="w-20 h-20 bg-blue-600/20 rounded-full flex items-center justify-center border border-blue-500/50 animate-pulse">
+                    <i data-lucide="video" class="w-10 h-10 text-blue-400"></i>
+                </div>
+            </div>
+            <h1 class="text-3xl font-bold mb-2">视频会议 Pro</h1>
+            <p class="text-slate-400 mb-8 text-sm">安全 · 高清 · 多人协作</p>
+
+            <!-- 选项卡 -->
+            <div class="flex gap-4 mb-6">
+                <button onclick="switchTab('create')" id="tab-create" class="flex-1 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium transition">创建会议</button>
+                <button onclick="switchTab('join')" id="tab-join" class="flex-1 py-2 rounded-lg bg-slate-700 text-slate-300 text-sm font-medium hover:bg-slate-600 transition">加入会议</button>
+            </div>
+
+            <!-- 创建房间面板 -->
+            <div id="panel-create" class="space-y-4">
+                <div class="bg-slate-900/50 p-4 rounded-xl border border-dashed border-slate-600">
+                    <p class="text-xs text-slate-500 mb-1">你的会议昵称</p>
+                    <input type="text" id="host-name" value="房主詹姆斯" class="w-full bg-transparent text-center text-white font-bold outline-none border-b border-slate-700 focus:border-blue-500 transition pb-1">
+                </div>
+                <button onclick="createRoom()" class="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl font-bold shadow-lg hover:shadow-blue-500/20 transition transform active:scale-95">
+                    生成 4 位房间码
+                </button>
+            </div>
+
+            <!-- 加入房间面板 -->
+            <div id="panel-join" class="space-y-4 hidden">
+                <input type="text" id="guest-name" placeholder="请输入你的名字" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 transition">
+                <div class="flex gap-2">
+                    <input type="text" id="room-code-input" placeholder="4 位房间号" maxlength="4" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-center font-mono text-lg tracking-widest outline-none focus:border-blue-500 transition">
+                    <button onclick="joinRoom()" class="px-6 bg-slate-700 hover:bg-slate-600 rounded-xl font-medium transition">进入</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 视频会议主界面 -->
+    <div id="meeting-room" class="fixed inset-0 hidden flex flex-col">
+        
+        <!-- 顶部栏 -->
+        <div class="h-16 bg-slate-900/80 backdrop-blur flex items-center justify-between px-6 border-b border-slate-800 z-40">
+            <div class="flex items-center gap-4">
+                <div class="flex flex-col">
+                    <span class="text-xs text-slate-400">房间号</span>
+                    <span id="display-room-code" class="text-xl font-mono font-bold text-blue-400 tracking-wider">----</span>
+                </div>
+                <div class="h-8 w-[1px] bg-slate-700"></div>
+                <div class="flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full">
+                    <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span id="user-count" class="text-xs text-green-400 font-medium">1 人在线</span>
+                </div>
+            </div>
+            
+            <button onclick="leaveRoom()" class="bg-red-500/10 hover:bg-red-500 hover:text-white text-red-500 px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2">
+                <i data-lucide="log-out" class="w-4 h-4"></i> 退出
+            </button>
+        </div>
+
+        <!-- 视频网格区域 -->
+        <div id="video-container" class="flex-1 video-grid grid-1 relative">
+            <!-- 自己的视频 (始终存在) -->
+            <div id="local-card" class="video-card" onclick="toggleFocus(this)">
+                <video id="local-video" autoplay muted playsinline></video>
+                <div class="user-tag flex items-center gap-1">
+                    <i data-lucide="mic" class="w-3 h-3"></i> <span id="my-label">我</span>
+                </div>
+            </div>
+            <!-- 其他人的视频会动态插在这里 -->
+        </div>
+
+        <!-- 3. 房主通知弹窗 (准入控制) -->
+        <div id="request-modal" class="fixed bottom-6 right-6 z-50 hidden flex-col gap-3">
+            <!-- 动态生成请求卡片 -->
+        </div>
+
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // --- 全局状态 ---
+        let peer = null;
+        let myStream = null;
+        let myName = "";
+        let myRole = "guest"; // 'host' or 'guest'
+        let currentRoomCode = "";
+        
+        // 存储所有的连接对象 (peerId -> call/conn)
+        const peers = {}; 
+        // 存储已连接用户的名字 (peerId -> name)
+        const peerNames = {}; 
+
+        // --- DOM 元素 ---
+        const landingPage = document.getElementById('landing-page');
+        const meetingRoom = document.getElementById('meeting-room');
+        const videoContainer = document.getElementById('video-container');
+        const requestModal = document.getElementById('request-modal');
+        const displayRoomCode = document.getElementById('display-room-code');
+
+        // ================= 1. 界面逻辑 =================
+
+        function switchTab(tab) {
+            const btnCreate = document.getElementById('tab-create');
+            const btnJoin = document.getElementById('tab-join');
+            const panelCreate = document.getElementById('panel-create');
+            const panelJoin = document.getElementById('panel-join');
+
+            if (tab === 'create') {
+                btnCreate.className = "flex-1 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium transition";
+                btnJoin.className = "flex-1 py-2 rounded-lg bg-slate-700 text-slate-300 text-sm font-medium hover:bg-slate-600 transition";
+                panelCreate.classList.remove('hidden');
+                panelJoin.classList.add('hidden');
+            } else {
+                btnCreate.className = "flex-1 py-2 rounded-lg bg-slate-700 text-slate-300 text-sm font-medium hover:bg-slate-600 transition";
+                btnJoin.className = "flex-1 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium transition";
+                panelCreate.classList.add('hidden');
+                panelJoin.classList.remove('hidden');
+            }
+        }
+
+        function toggleFocus(card) {
+            // 如果已经聚焦，取消聚焦
+            if (card.classList.contains('focused')) {
+                card.classList.remove('focused');
+            } else {
+                // 取消其他人的聚焦
+                document.querySelectorAll('.video-card').forEach(c => c.classList.remove('focused'));
+                // 聚焦当前
+                card.classList.add('focused');
+            }
+        }
+
+        function updateGridClass() {
+            const count = videoContainer.children.length;
+            videoContainer.className = `flex-1 video-grid grid-${Math.min(count, 4)}`; // 简单的响应式类名切换
+            document.getElementById('user-count').innerText = `${count} 人在线`;
+        }
+
+        // ================= 2. 核心初始化 =================
+
+        async function initMedia() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                myStream = stream;
+                const videoEl = document.getElementById('local-video');
+                videoEl.srcObject = stream;
+                return true;
+            } catch (err) {
+                alert("无法获取摄像头权限，请检查设置");
+                console.error(err);
+                return false;
+            }
+        }
+
+        function generateRoomCode() {
+            return Math.floor(1000 + Math.random() * 9000).toString();
+        }
+
+        // ================= 3. 房主逻辑 (Host) =================
+
+        async function createRoom() {
+            if (!await initMedia()) return;
+
+            myName = document.getElementById('host-name').value || "房主";
+            myRole = "host";
+            currentRoomCode = generateRoomCode();
+            
+            // 房主的 Peer ID 格式固定: ROOM_XXXX_HOST
+            const hostId = `ROOM_${currentRoomCode}_HOST`;
+
+            setupPeer(hostId);
+        }
+
+        // ================= 4. 访客逻辑 (Guest) =================
+
+        async function joinRoom() {
+            if (!await initMedia()) return;
+
+            const nameInput = document.getElementById('guest-name').value;
+            const codeInput = document.getElementById('room-code-input').value;
+
+            if (!nameInput || codeInput.length !== 4) {
+                alert("请输入名字和正确的4位房间号");
+                return;
+            }
+
+            myName = nameInput;
+            myRole = "guest";
+            currentRoomCode = codeInput;
+
+            // 访客 ID 随机
+            setupPeer(null); 
+        }
+
+        // ================= 5. PeerJS 网络处理 =================
+
+        function setupPeer(customId) {
+            peer = new Peer(customId, { debug: 1 });
+
+            peer.on('open', (id) => {
+                console.log('My ID:', id);
+                enterMeetingUI();
+
+                if (myRole === 'guest') {
+                    // 访客：连接房主
+                    connectToHost(id);
+                }
+            });
+
+            // 被呼叫 (视频流)
+            peer.on('call', (call) => {
+                call.answer(myStream);
+                const callerId = call.peer;
+                
+                // 如果有 metadata 传名字更好，PeerJS call metadata 支持有限
+                // 这里简化：我们在 data connection 里同步名字，视频流只管接
+                
+                handleStream(call);
+            });
+
+            // 收到数据 (信令)
+            peer.on('connection', (conn) => {
+                handleDataConnection(conn);
+            });
+
+            peer.on('error', (err) => {
+                if (err.type === 'unavailable-id') {
+                    alert("创建失败，房间号冲突，请重试");
+                } else if (err.type === 'peer-unavailable') {
+                    alert("找不到该房间，可能房主未上线或房间号错误");
+                    location.reload();
+                } else {
+                    console.error(err);
+                }
+            });
+        }
+
+        // --- 访客：发起连接请求 ---
+        function connectToHost(myPeerId) {
+            const hostId = `ROOM_${currentRoomCode}_HOST`;
+            const conn = peer.connect(hostId, {
+                metadata: { name: myName, type: 'join-request' }
+            });
+
+            conn.on('open', () => {
+                console.log("已连接到房主，等待准入...");
+                // 发送请求
+                conn.send({ type: 'request', name: myName, id: myPeerId });
+            });
+
+            conn.on('data', (data) => {
+                console.log("收到房主消息:", data);
+                if (data.type === 'accepted') {
+                    // 1. 房主同意了，开始视频
+                    console.log("房主同意进入！");
+                    
+                    // 2. 处理现有的 peer 列表 (Mesh 网络的关键)
+                    // 房主会发给我一个列表：[{id: 'xxx', name: 'xxx'}, ...]
+                    if (data.peers && data.peers.length > 0) {
+                        connectToPeers(data.peers);
+                    }
+                } else if (data.type === 'new-peer') {
+                    // 3. 有新人在我之后进来了，房主通知我连他
+                    console.log("新成员加入:", data.peerId);
+                    callPeer(data.peerId, data.name);
+                }
+            });
+            
+            conn.on('close', () => {
+                alert("与房主断开连接");
+            });
+        }
+
+        // --- 房主：处理数据连接 ---
+        function handleDataConnection(conn) {
+            conn.on('data', (data) => {
+                if (data.type === 'request') {
+                    // 收到入会申请
+                    if (myRole === 'host') {
+                        showRequestPopup(conn, data.name, data.id);
+                    }
+                }
+            });
+        }
+
+        // --- 房主：显示准入弹窗 ---
+        function showRequestPopup(conn, guestName, guestId) {
+            const div = document.createElement('div');
+            div.className = "bg-slate-800 border border-slate-600 p-4 rounded-xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right duration-300 w-80";
+            div.innerHTML = `
+                <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+                    ${guestName[0]}
+                </div>
+                <div class="flex-1">
+                    <p class="text-white text-sm font-bold">${guestName}</p>
+                    <p class="text-slate-400 text-xs">申请加入房间</p>
+                </div>
+                <div class="flex gap-2">
+                    <button class="btn-deny p-2 bg-slate-700 hover:bg-red-600 rounded-lg transition text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+                    <button class="btn-accept p-2 bg-blue-600 hover:bg-blue-500 rounded-lg transition text-white"><i data-lucide="check" class="w-4 h-4"></i></button>
+                </div>
+            `;
+
+            requestModal.classList.remove('hidden');
+            requestModal.appendChild(div);
+            lucide.createIcons();
+
+            // 拒绝
+            div.querySelector('.btn-deny').onclick = () => {
+                conn.close();
+                div.remove();
+                if (requestModal.children.length === 0) requestModal.classList.add('hidden');
+            };
+
+            // 同意
+            div.querySelector('.btn-accept').onclick = () => {
+                acceptGuest(conn, guestName, guestId);
+                div.remove();
+                if (requestModal.children.length === 0) requestModal.classList.add('hidden');
+            };
+        }
+
+        // --- 房主：同意访客进入 ---
+        function acceptGuest(conn, name, id) {
+            // 1. 收集当前房间里所有人的列表发给新人 (让他去连别人)
+            const currentPeersList = Object.keys(peerNames).map(pid => ({
+                id: pid,
+                name: peerNames[pid]
+            }));
+            // 把房主自己也加上
+            currentPeersList.push({ id: peer.id, name: myName });
+
+            // 2. 发送接受指令
+            conn.send({ 
+                type: 'accepted', 
+                peers: currentPeersList 
+            });
+
+            // 3. 通知房间里已有的其他人：有新人来了 (让他们准备被连，或者主动连)
+            // 为了简单，我们让新人主动连所有人，旧人不需要特殊操作，只需被动接听 call 即可
+            // 但如果要同步名字，最好还是广播一下
+            broadcastNewPeer(id, name);
+
+            // 4. 房主自己主动呼叫新人
+            callPeer(id, name);
+        }
+
+        // --- 广播新成员 (房主用) ---
+        function broadcastNewPeer(newPeerId, newName) {
+            // 遍历所有已连接的数据通道，告诉他们有新人
+            // 注意：这里简化了，假设房主保持了所有人的 conn。
+            // 实际 PeerJS 建议保持 conn 对象。
+            // 由于代码复杂度限制，这里主要依赖视频流建立。
+            // 真正的名字同步在 Mesh 网络中最好每个人互联时 DataConn 互传，
+            // 这里为了单文件，名字显示可能只在房主端完美，其他人看到的是 Video。
+        }
+
+        // --- 建立 Mesh 网络连接 (新人用) ---
+        function connectToPeers(list) {
+            list.forEach(p => {
+                if (p.id === peer.id) return; // 别连自己
+                console.log("尝试连接现有成员:", p.name);
+                callPeer(p.id, p.name);
+            });
+        }
+
+        // --- 发起视频呼叫 (通用) ---
+        function callPeer(remoteId, remoteName) {
+            if (peers[remoteId]) return; // 已经连了
+
+            // 记录名字
+            peerNames[remoteId] = remoteName;
+
+            const call = peer.call(remoteId, myStream, {
+                metadata: { name: myName }
+            });
+            
+            handleStream(call, remoteName);
+        }
+
+        // --- 处理视频流 (通用) ---
+        function handleStream(call, knownName) {
+            const remoteId = call.peer;
+            
+            call.on('stream', (remoteStream) => {
+                if (peers[remoteId]) return; // 防止重复添加
+                
+                peers[remoteId] = call;
+                
+                // 尝试从 metadata 获取名字 (如果是被叫方)
+                let name = knownName || "未知成员";
+                if (call.metadata && call.metadata.name) {
+                    name = call.metadata.name;
+                }
+
+                addVideoTile(remoteId, remoteStream, name);
+            });
+
+            call.on('close', () => {
+                removeVideoTile(remoteId);
+            });
+            
+            call.on('error', () => {
+                removeVideoTile(remoteId);
+            });
+        }
+
+        // ================= 6. DOM 操作 =================
+
+        function enterMeetingUI() {
+            landingPage.classList.add('hidden');
+            meetingRoom.classList.remove('hidden');
+            displayRoomCode.innerText = currentRoomCode;
+            document.getElementById('my-label').innerText = `${myName} (我)`;
+            updateGridClass();
+        }
+
+        function addVideoTile(id, stream, name) {
+            if (document.getElementById(`container-${id}`)) return;
+
+            const div = document.createElement('div');
+            div.className = "video-card fade-in";
+            div.id = `container-${id}`;
+            div.onclick = function() { toggleFocus(this); };
+            
+            div.innerHTML = `
+                <video autoplay playsinline></video>
+                <div class="user-tag flex items-center gap-1">
+                    <i data-lucide="user" class="w-3 h-3"></i> <span>${name}</span>
+                </div>
+            `;
+            
+            videoContainer.appendChild(div);
+            
+            const videoEl = div.querySelector('video');
+            videoEl.srcObject = stream;
+
+            updateGridClass();
+            lucide.createIcons();
+        }
+
+        function removeVideoTile(id) {
+            const el = document.getElementById(`container-${id}`);
+            if (el) {
+                el.remove();
+                delete peers[id];
+                updateGridClass();
+            }
+        }
+
+        function leaveRoom() {
+            if (confirm("确定要退出会议吗？")) {
+                peer.destroy();
+                location.reload();
+            }
+        }
+
+    </script>
+</body>
+</html>
